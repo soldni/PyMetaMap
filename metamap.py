@@ -1,19 +1,28 @@
-from __future__ import unicode_literals
 import re
 import os
 import json
-import codecs
 import hashlib
 import subprocess
 
-from utils.cache import simple_caching
+from .cache import simple_caching, hash_obj
 
-base_cmd = ['java', '-classpath', 'bin/metamap-api.jar',
+base_cmd = ['java', '-classpath', 'metamap-api.jar',
             'gov.nih.nlm.nls.metamap.MetaMapApiTest']
 
 # java -classpath bin/metamap-api.jar gov.nih.nlm.nls.metamap.MetaMapApiTest
 
-base_config = {'-I': None,'-O':None, '-G': None, '--negex':None, '-J':'sosy,bpoc,clnd,diap,dsyn,fndg,hlca,inpo,inpr,medd,mobd,neop,patf,phsu,topp'}#'T029,T023,T200,T060,T047,T033,T058,T037,T170,T074,T048,T191,T046,T121,T184,T061'}
+base_config = {
+    '-I': None,
+    '-O': None,
+    '-G': None,
+    '--negex': None,
+    '-J': (
+        'sosy,bpoc,clnd,diap,dsyn,fndg,hlca,inpo,inpr,medd,'
+        'mobd,neop,patf,phsu,topp'
+    )
+}
+# T029,T023,T200,T060,T047,T033,T058,T037,T170,
+# T074,T048,T191,T046,T121,T184,T061
 
 
 class MetaMap(object):
@@ -26,12 +35,14 @@ class MetaMap(object):
             os.makedirs(cachedir)
         self.cachedir = cachedir
 
-        self.base_cmd = ['java', '-classpath',
-                         os.path.join(basepath, 'bin/metamap-api.jar'),
-                         'gov.nih.nlm.nls.metamap.MetaMapApiTest']
+        self.base_cmd = [
+            'java', '-classpath',
+            os.path.join(basepath, 'metamap-api.jar'),
+            'gov.nih.nlm.nls.metamap.MetaMapApiTest'
+        ]
 
         if type(default_config) != dict:
-            with codecs.open(default_config, 'rb', 'utf-8') as f:
+            with open(default_config) as f:
                 config = json.load(f)
         else:
             config = default_config
@@ -41,16 +52,15 @@ class MetaMap(object):
         self.opts = []
 
         map(lambda t: self.opts.extend(filter(lambda t: len(t) > 0, t)),
-            [(k, str(v) if v else '') for k, v in config.iteritems()])
+            [(k, str(v) if v else '') for k, v in config.items()])
 
         self.format_string = re.compile(r'(,\s|\[)(([A-Za-z]+\s?)+)')
 
     def __hash__(self):
-        h = hash(' '.join(sorted(self.opts))) + hash(' '.join(self.base_cmd))
-        return h
+        return hash_obj([self.opts, self.base_cmd])
 
     def tag(self, txt, invalidate=False):
-        cc = hashlib.md5(json.dumps([sorted(self.opts), txt])).hexdigest()
+        cc = hash_obj([self.opts, txt])
         return self.__tag(txt, cache_comment=cc, invalidate=invalidate)
 
     @simple_caching()
@@ -63,11 +73,13 @@ class MetaMap(object):
                              stderr=subprocess.PIPE)
         out, err = p.communicate()
 
-        out = out.replace('Acronyms and Abbreviations:', '').strip()
+        decoded_out = out.decode('ascii')
+
+        out = decoded_out.replace('Acronyms and Abbreviations:', '').strip()
 
         if err:
-            raise OSError(err) if err else OSError(out)
-        #print out
+            raise OSError(err.decode('utf-8')) if err else OSError(out)
+
         parsed_mm = json.loads(out)
         return parsed_mm
 
