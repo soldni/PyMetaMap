@@ -1,7 +1,6 @@
 import re
 import os
 import json
-import hashlib
 import subprocess
 
 from .cache import simple_caching, hash_obj
